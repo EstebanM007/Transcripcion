@@ -26,7 +26,7 @@ class TranscriptionApp(tk.Tk):
         # Configurar la clave API para Groq.
         if not os.environ.get("GROQ_API_KEY"):
             # Nota: Incluir la clave en el código no es seguro en producción.
-            os.environ["GROQ_API_KEY"] = "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"
+            os.environ["GROQ_API_KEY"] = "Key_Secreta_Groq"
 
         # Inicializar el modelo de chat usando ChatGroq.
         try:
