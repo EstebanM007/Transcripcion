@@ -4,7 +4,7 @@ import threading
 import time
 import tkinter as tk
 from tkinter import filedialog, messagebox, scrolledtext, simpledialog
-from moviepy import *
+from moviepy.editor import VideoFileClip, AudioFileClip
 import speech_recognition as sr
 
 # Importación de componentes de LangChain (basados en el ejemplo proporcionado)
@@ -26,7 +26,7 @@ class TranscriptionApp(tk.Tk):
         # Configurar la clave API para Groq.
         if not os.environ.get("GROQ_API_KEY"):
             # Nota: Incluir la clave en el código no es seguro en producción.
-            os.environ["GROQ_API_KEY"] = "Key_Secreta_Groq"
+            os.environ["GROQ_API_KEY"] = "tu_clave_api_aqui"
             
         # Inicializar el modelo de chat usando ChatGroq.
         try:
