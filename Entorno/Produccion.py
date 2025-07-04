@@ -71,6 +71,7 @@ class TranscriptionApp(tk.Tk):
         self.update_transcription_log("  1) Seleccione un archivo de audio/video.")
         self.update_transcription_log("  2) Pulse 'Transcribir Audio'.")
         self.update_transcription_log("  3) Espere el resultado en el panel de la derecha.")
+        self.update_transcription_log("  *REPOSITORIO* https://github.com/EstebanM007/Media")
         self.update_transcription_log("")  # línea en blanco para separar
 
         # Nota sobre límites y memoria
