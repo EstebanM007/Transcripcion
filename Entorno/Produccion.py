@@ -5,7 +5,7 @@ import time
 import tkinter as tk
 from tkinter import filedialog, messagebox, scrolledtext, ttk
 from tkinter import font as tkFont
-from moviepy.editor import VideoFileClip, AudioFileClip
+from moviepy import *
 import speech_recognition as sr
 import re
 
@@ -146,6 +146,13 @@ class TranscriptionApp(tk.Tk):
         self.file_path = None
         self.cancelled = False
         self.conversion_in_progress = False
+        
+        # Variables para el indicador de progreso mejorado
+        self.transcription_start_time = None
+        self.total_segments = 0
+        self.current_segment = 0
+        self.processed_segments = 0
+        self.failed_segments = 0
 
         # API Groq
         if not os.environ.get("GROQ_API_KEY"):
@@ -191,7 +198,7 @@ class TranscriptionApp(tk.Tk):
         self.update_transcription_log("  1) Seleccione un archivo de audio/video.")
         self.update_transcription_log("  2) Pulse 'Transcribir Audio'.")
         self.update_transcription_log("  3) Espere el resultado en el panel de la derecha.")
-        self.update_transcription_log("  *REPOSITORIO* https://github.com/EstebanM007/Media")
+        self.update_transcription_log("  *MANUAL* https://github.com/EstebanM007/Media/tree/main/STT_from_MP4_with_IA")
         self.update_transcription_log("")  # línea en blanco para separar
 
         # Nota sobre límites y memoria
@@ -358,8 +365,32 @@ class TranscriptionApp(tk.Tk):
             hdr, text="📝 Registro de Transcripción", bg=self.colors['success'],
             fg='white', font=('Segoe UI',14,'bold')
         ).pack(side=tk.LEFT, padx=10)
-        self.progress_label = tk.Label(hdr, bg=self.colors['success'], fg='white')
-        self.progress_label.pack(side=tk.RIGHT, padx=10)
+        
+        # Crear frame para los indicadores de progreso
+        progress_frame = tk.Frame(hdr, bg=self.colors['success'])
+        progress_frame.pack(side=tk.RIGHT, padx=10)
+        
+        # Indicador principal de progreso
+        self.progress_label = tk.Label(
+            progress_frame, bg=self.colors['success'], fg='white',
+            font=('Segoe UI', 9, 'bold')
+        )
+        self.progress_label.pack(side=tk.TOP)
+        
+        # Indicador de estadísticas
+        self.stats_label = tk.Label(
+            progress_frame, bg=self.colors['success'], fg='#e0f2fe',
+            font=('Segoe UI', 8)
+        )
+        self.stats_label.pack(side=tk.TOP)
+        
+        # Indicador de tiempo
+        self.time_label = tk.Label(
+            progress_frame, bg=self.colors['success'], fg='#e0f2fe',
+            font=('Segoe UI', 8)
+        )
+        self.time_label.pack(side=tk.TOP)
+        
         self.transcription_text = scrolledtext.ScrolledText(
             frame, wrap=tk.WORD, font=('Consolas',10), bg='#f8fafc',
             bd=1, relief='solid'
@@ -374,6 +405,82 @@ class TranscriptionApp(tk.Tk):
         cont = tk.Frame(self.signature_frame, bg='#ffffff')
         cont.pack(fill=tk.X, padx=20, pady=10)
 
+    def reset_progress_indicators(self):
+        """Reinicia los indicadores de progreso"""
+        self.transcription_start_time = None
+        self.total_segments = 0
+        self.current_segment = 0
+        self.processed_segments = 0
+        self.failed_segments = 0
+        self.progress_label.config(text="")
+        self.stats_label.config(text="")
+        self.time_label.config(text="")
+
+    def update_progress_indicators(self, phase="", current=0, total=0, status=""):
+        """Actualiza los indicadores de progreso con información detallada"""
+        if phase == "start":
+            self.transcription_start_time = time.time()
+            self.total_segments = total
+            self.current_segment = 0
+            self.processed_segments = 0
+            self.failed_segments = 0
+            self.progress_label.config(text=f"🎯 Iniciando transcripción...")
+            self.stats_label.config(text=f"Segmentos: {total}")
+            self.time_label.config(text="⏱️ Tiempo: 00:00")
+        
+        elif phase == "processing":
+            self.current_segment = current
+            elapsed = time.time() - self.transcription_start_time if self.transcription_start_time else 0
+            
+            # Calcular progreso
+            progress_percent = (current / total) * 100 if total > 0 else 0
+            
+            # Estimar tiempo restante
+            if current > 0:
+                time_per_segment = elapsed / current
+                remaining_segments = total - current
+                eta = time_per_segment * remaining_segments
+                eta_str = f"ETA: {int(eta//60):02d}:{int(eta%60):02d}"
+            else:
+                eta_str = "ETA: --:--"
+            
+            # Actualizar labels
+            self.progress_label.config(text=f"🔄 Procesando {current}/{total} ({progress_percent:.1f}%)")
+            
+            success_rate = (self.processed_segments / current) * 100 if current > 0 else 0
+            self.stats_label.config(text=f"✅ {self.processed_segments} ❌ {self.failed_segments} ({success_rate:.1f}% éxito)")
+            
+            elapsed_str = f"{int(elapsed//60):02d}:{int(elapsed%60):02d}"
+            self.time_label.config(text=f"⏱️ {elapsed_str} | {eta_str}")
+        
+        elif phase == "segment_success":
+            self.processed_segments += 1
+        
+        elif phase == "segment_failed":
+            self.failed_segments += 1
+        
+        elif phase == "complete":
+            elapsed = time.time() - self.transcription_start_time if self.transcription_start_time else 0
+            elapsed_str = f"{int(elapsed//60):02d}:{int(elapsed%60):02d}"
+            success_rate = (self.processed_segments / self.total_segments) * 100 if self.total_segments > 0 else 0
+            
+            self.progress_label.config(text=f"✅ Completado - {self.total_segments} segmentos")
+            self.stats_label.config(text=f"✅ {self.processed_segments} ❌ {self.failed_segments} ({success_rate:.1f}% éxito)")
+            self.time_label.config(text=f"⏱️ Tiempo total: {elapsed_str}")
+        
+        elif phase == "cancelled":
+            elapsed = time.time() - self.transcription_start_time if self.transcription_start_time else 0
+            elapsed_str = f"{int(elapsed//60):02d}:{int(elapsed%60):02d}"
+            
+            self.progress_label.config(text=f"❌ Cancelado en {self.current_segment}/{self.total_segments}")
+            self.stats_label.config(text=f"✅ {self.processed_segments} ❌ {self.failed_segments}")
+            self.time_label.config(text=f"⏱️ Tiempo: {elapsed_str}")
+        
+        elif phase == "error":
+            self.progress_label.config(text=f"❌ Error: {status}")
+            self.stats_label.config(text="")
+            self.time_label.config(text="")
+
     # Métodos de transcripción y chat
     def select_file(self):
         filetypes = [("Media Files", "*.mp4 *.ogg *.mp3 *.wav"), ("All files", "*.*")]
@@ -384,6 +491,7 @@ class TranscriptionApp(tk.Tk):
             self.file_label.config(text=f"📄 {filename}", fg=self.colors['success'])
             self.transcribe_btn.config(state=tk.NORMAL)
             self.update_transcription_log(f"Archivo seleccionado: {filename}")
+            self.reset_progress_indicators()
         else:
             self.update_transcription_log("No se seleccionó ningún archivo.")
 
@@ -418,10 +526,17 @@ class TranscriptionApp(tk.Tk):
             audio = wave.open(filename, 'rb')
         except Exception as e:
             self.update_transcription_log(f"Error al abrir WAV: {e}")
+            self.update_progress_indicators("error", status=f"Error al abrir WAV: {e}")
             return segments
+        
         frame_rate = audio.getframerate()
         n_frames = audio.getnframes()
         duration = n_frames / frame_rate
+        total_segments = int(duration // segment_length) + (1 if duration % segment_length > 0 else 0)
+        
+        self.update_transcription_log(f"Duración del audio: {duration:.1f} segundos")
+        self.update_transcription_log(f"Se crearán {total_segments} segmentos de {segment_length} segundos")
+        
         for start in range(0, int(duration), segment_length):
             if self.cancelled:
                 break
@@ -440,6 +555,7 @@ class TranscriptionApp(tk.Tk):
                 self.update_transcription_log(f"Segmento creado: {segment_filename}")
             except Exception as e:
                 self.update_transcription_log(f"Error crear segmento {segment_filename}: {e}")
+        
         audio.close()
         return segments
 
@@ -447,51 +563,88 @@ class TranscriptionApp(tk.Tk):
         recognizer = sr.Recognizer()
         full = ""
         total = len(segments)
+        
+        # Inicializar indicadores de progreso
+        self.update_progress_indicators("start", total=total)
+        
         for i, seg in enumerate(segments, 1):
             if self.cancelled:
                 self.update_transcription_log("Transcripción cancelada.")
+                self.update_progress_indicators("cancelled")
                 break
+            
+            # Actualizar progreso
+            self.update_progress_indicators("processing", current=i, total=total)
+            
             with sr.AudioFile(seg) as source:
                 audio_data = recognizer.record(source)
                 try:
                     text = recognizer.recognize_google(audio_data, language="es-ES")
-                    self.update_transcription_log(f"{seg}: {text}")
+                    self.update_transcription_log(f"✅ {seg}: {text}")
                     full += text + "\n"
+                    self.update_progress_indicators("segment_success")
                 except sr.UnknownValueError:
-                    self.update_transcription_log(f"No entendí {seg}")
+                    self.update_transcription_log(f"❌ No entendí {seg}")
+                    self.update_progress_indicators("segment_failed")
                 except sr.RequestError as e:
-                    self.update_transcription_log(f"Error petición {seg}: {e}")
+                    self.update_transcription_log(f"❌ Error petición {seg}: {e}")
+                    self.update_progress_indicators("segment_failed")
+            
             try:
                 os.remove(seg)
             except:
                 pass
-            self.update_progress(i, total)
+        
+        if not self.cancelled:
+            self.update_progress_indicators("complete")
+        
         return full
 
     def _transcribe_audio(self):
         if not self.file_path:
             self.update_transcription_log("Seleccione un archivo primero.")
             return
+        
         self.cancelled = False
         self.cancel_btn.config(state=tk.NORMAL)
-        self.update_transcription_log("Iniciando conversión...")
+        self.transcribe_btn.config(state=tk.DISABLED)
+        
+        self.update_transcription_log("🔄 Iniciando conversión...")
         wav = self.convert_to_wav(self.file_path)
         if not wav:
-            self.update_transcription_log("Conversión fallida.")
+            self.update_transcription_log("❌ Conversión fallida.")
+            self.update_progress_indicators("error", status="Conversión fallida")
+            self.cancel_btn.config(state=tk.DISABLED)
+            self.transcribe_btn.config(state=tk.NORMAL)
             return
-        self.update_transcription_log("Dividiendo audio...")
+        
+        self.update_transcription_log("📊 Dividiendo audio...")
         segs = self.divide_audio(wav)
         if not segs:
+            self.update_transcription_log("❌ No se pudieron crear segmentos.")
+            self.update_progress_indicators("error", status="No se pudieron crear segmentos")
+            self.cancel_btn.config(state=tk.DISABLED)
+            self.transcribe_btn.config(state=tk.NORMAL)
             return
-        self.update_transcription_log("Iniciando transcripción...")
+        
+        self.update_transcription_log("🎙️ Iniciando transcripción...")
         text = self.transcribe_segments(segs)
-        with open("transcripcion.txt","w",encoding="utf-8") as f:
-            f.write(text)
-        self.update_transcription_log("Transcripción guardada.")
-        self.update_transcription_log("Enviando a IA resumen...")
-        summary = self.get_chat_response("Resume el siguiente texto de manera clara y estructurada usando markdown cuando sea apropiado:\n\n" + text)
-        self.update_ia_chat_markdown("\n\n---\n\n🤖 **Resumen Automático de la Transcripción:**\n\n" + summary)
+        
+        if not self.cancelled:
+            with open("transcripcion.txt","w",encoding="utf-8") as f:
+                f.write(text)
+            self.update_transcription_log("💾 Transcripción guardada en transcripcion.txt")
+            self.update_transcription_log("🤖 Enviando a IA para generar resumen...")
+            
+            try:
+                summary = self.get_chat_response("Resume el siguiente texto de manera clara y estructurada usando markdown cuando sea apropiado:\n\n" + text)
+                self.update_ia_chat_markdown("\n\n---\n\n🤖 **Resumen Automático de la Transcripción:**\n\n" + summary)
+                self.update_transcription_log("✅ Resumen generado exitosamente.")
+            except Exception as e:
+                self.update_transcription_log(f"❌ Error al generar resumen: {e}")
+        
         self.cancel_btn.config(state=tk.DISABLED)
+        self.transcribe_btn.config(state=tk.NORMAL)
 
     def transcribe_audio(self):
         threading.Thread(target=self._transcribe_audio, daemon=True).start()
@@ -550,11 +703,13 @@ class TranscriptionApp(tk.Tk):
         self.update_ia_chat_markdown(msg)
 
     def update_progress(self, cur, tot):
-        self.progress_label.config(text=f"{cur}/{tot}")
+        """Método de compatibilidad - ahora redirige a los nuevos indicadores"""
+        self.update_progress_indicators("processing", current=cur, total=tot)
 
     def cancel_process(self):
         self.cancelled = True
-        self.update_transcription_log("Proceso cancelado por usuario.")
+        self.update_transcription_log("❌ Proceso cancelado por usuario.")
+        self.update_progress_indicators("cancelled")
 
 if __name__ == '__main__':
     app = TranscriptionApp()
