@@ -4,8 +4,10 @@ import threading
 import time
 import tkinter as tk
 from tkinter import filedialog, messagebox, scrolledtext, ttk
+from tkinter import font as tkFont
 from moviepy.editor import VideoFileClip, AudioFileClip
 import speech_recognition as sr
+import re
 
 # Importación de componentes de LangChain
 from langchain.chains import LLMChain
@@ -18,6 +20,118 @@ import os, sys
 if getattr(sys, "frozen", False):
     # sys._MEIPASS es la carpeta temporal donde PyInstaller extrae los binarios
     os.environ["IMAGEIO_FFMPEG_EXE"] = os.path.join(sys._MEIPASS, "ffmpeg.exe")
+
+class MarkdownText(tk.Text):
+    """Widget de texto personalizado que puede renderizar markdown básico"""
+    
+    def __init__(self, parent, **kwargs):
+        super().__init__(parent, **kwargs)
+        self.setup_markdown_tags()
+        
+    def setup_markdown_tags(self):
+        """Configura los tags para diferentes estilos de markdown"""
+        # Fuentes
+        default_font = tkFont.nametofont("TkDefaultFont")
+        bold_font = default_font.copy()
+        bold_font.configure(weight="bold")
+        italic_font = default_font.copy()
+        italic_font.configure(slant="italic")
+        code_font = tkFont.Font(family="Courier", size=default_font['size'])
+        heading_font = default_font.copy()
+        heading_font.configure(size=default_font['size'] + 4, weight="bold")
+        
+        # Configurar tags
+        self.tag_configure("bold", font=bold_font)
+        self.tag_configure("italic", font=italic_font)
+        self.tag_configure("code", font=code_font, background="#f0f0f0", relief="solid", borderwidth=1)
+        self.tag_configure("heading", font=heading_font, foreground="#2563eb")
+        self.tag_configure("heading2", font=heading_font, foreground="#2563eb")
+        self.tag_configure("heading3", font=heading_font, foreground="#2563eb")
+        self.tag_configure("quote", foreground="#6b7280", lmargin1=20, lmargin2=20)
+        self.tag_configure("list_item", lmargin1=20, lmargin2=40)
+        self.tag_configure("link", foreground="#2563eb", underline=True)
+        
+    def insert_markdown(self, index, text):
+        """Inserta texto con formato markdown"""
+        self.config(state=tk.NORMAL)
+        
+        # Dividir el texto en líneas
+        lines = text.split('\n')
+        
+        for line in lines:
+            if line.strip():
+                self.process_line(index, line)
+            else:
+                self.insert(index, '\n')
+            index = self.index(tk.INSERT)
+            
+        self.config(state=tk.DISABLED)
+        
+    def process_line(self, index, line):
+        """Procesa una línea individual aplicando formato markdown"""
+        # Encabezados
+        if line.startswith('### '):
+            self.insert(index, line[4:] + '\n', "heading3")
+        elif line.startswith('## '):
+            self.insert(index, line[3:] + '\n', "heading2")
+        elif line.startswith('# '):
+            self.insert(index, line[2:] + '\n', "heading")
+        # Citas
+        elif line.startswith('> '):
+            self.insert(index, line[2:] + '\n', "quote")
+        # Listas
+        elif line.strip().startswith('- ') or line.strip().startswith('* '):
+            content = line.strip()[2:]
+            self.insert(index, f"• {content}\n", "list_item")
+        elif re.match(r'^\d+\. ', line.strip()):
+            self.insert(index, line + '\n', "list_item")
+        # Línea normal con formato inline
+        else:
+            self.process_inline_formatting(index, line + '\n')
+    
+    def process_inline_formatting(self, index, text):
+        """Procesa formato inline como negrita, cursiva, código"""
+        # Patrones de markdown con expresiones regulares
+        patterns = [
+            (r'\*\*(.*?)\*\*', 'bold'),      # **texto** -> negrita
+            (r'\*(.*?)\*', 'italic'),         # *texto* -> cursiva
+            (r'`(.*?)`', 'code'),             # `texto` -> código
+        ]
+        
+        current_pos = 0
+        
+        while current_pos < len(text):
+            # Buscar el próximo patrón
+            next_match = None
+            next_pos = len(text)
+            next_tag = None
+            
+            for pattern, tag in patterns:
+                match = re.search(pattern, text[current_pos:])
+                if match:
+                    match_start = current_pos + match.start()
+                    if match_start < next_pos:
+                        next_match = match
+                        next_pos = match_start
+                        next_tag = tag
+            
+            if next_match:
+                # Insertar texto antes del match
+                if next_pos > current_pos:
+                    self.insert(index, text[current_pos:next_pos])
+                    index = self.index(tk.INSERT)
+                
+                # Insertar el texto formateado
+                formatted_text = next_match.group(1)
+                self.insert(index, formatted_text, next_tag)
+                index = self.index(tk.INSERT)
+                
+                # Continuar después del match
+                current_pos = current_pos + next_match.end()
+            else:
+                # No hay más patrones, insertar el resto del texto
+                self.insert(index, text[current_pos:])
+                break
 
 class TranscriptionApp(tk.Tk):
     def __init__(self):
@@ -49,17 +163,23 @@ class TranscriptionApp(tk.Tk):
         # Prompt y memoria
         self.system_prompt = (
             "Eres un chatbot conversacional amigable que ayuda a resumir y "
-            "responder preguntas sobre transcripciones."
+            "responder preguntas sobre transcripciones. Usa markdown "
+            "para formatear tus respuestas cuando sea apropiado: "
+            "- Usa **texto** para negrita\n"
+            "- Usa *texto* para cursiva\n"
+            "- Usa `código` para código inline\n"
+            "- Usa # para encabezados\n"
+            "- Usa - para listas\n"
+            "- Usa > para citas\n"
+            "Responde de manera clara y bien estructurada."
         )
         self.conv_memory = ConversationBufferWindowMemory(
             k=5, memory_key="chat_history", return_messages=True
         )
 
         self.create_widgets()
-                # Mostrar mensaje de bienvenida al iniciar la app
+        # Mostrar mensaje de bienvenida al iniciar la app
         self.show_welcome()
-        
-        # Mostrar bienvenida
         
     def show_welcome(self):
         separator = "=" * 50
@@ -86,6 +206,7 @@ class TranscriptionApp(tk.Tk):
         self.update_transcription_log("(Maximiza la ventana para ver mejor el chat y poder chatear con la IA.)")
         self.update_transcription_log("Los mensajes en el chat son editables: puedes eliminar o modificar texto libremente.")
         self.update_transcription_log("Usa Ctrl+A para seleccionar todo el texto dentro del chat cuando lo necesites.")
+        self.update_transcription_log("✨ NUEVO: El chat ahora soporta formato Markdown - la IA puede usar negrita, cursiva, código, etc.")
         self.update_transcription_log(separator)
 
     def setup_styles(self):
@@ -180,14 +301,41 @@ class TranscriptionApp(tk.Tk):
         hdr.pack(fill=tk.X)
         hdr.pack_propagate(False)
         tk.Label(
-            hdr, text="🤖 Chat con IA", bg=self.colors['accent'], fg='white',
+            hdr, text="🤖 Chat con IA (Markdown)", bg=self.colors['accent'], fg='white',
             font=('Segoe UI',14,'bold')
         ).pack(expand=True)
-        self.ia_chat_text = scrolledtext.ScrolledText(
-            frame, wrap=tk.WORD, font=('Segoe UI',11), bg='#f8fafc',
-            bd=1, relief='solid'
+        
+        # Crear el frame del chat
+        chat_frame = tk.Frame(frame)
+        chat_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
+        
+        # Crear el widget de texto con markdown
+        self.ia_chat_text = MarkdownText(
+            chat_frame, wrap=tk.WORD, font=('Segoe UI',11), bg='#f8fafc',
+            bd=1, relief='solid', state=tk.DISABLED
         )
-        self.ia_chat_text.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
+        
+        # Crear scrollbar
+        scrollbar = tk.Scrollbar(chat_frame, orient=tk.VERTICAL, command=self.ia_chat_text.yview)
+        self.ia_chat_text.configure(yscrollcommand=scrollbar.set)
+        
+        # Empaquetar
+        self.ia_chat_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        # Mensaje de bienvenida en el chat
+        self.ia_chat_text.config(state=tk.NORMAL)
+        welcome_msg = "¡Hola! 👋 Soy tu asistente de IA. Puedo ayudarte a:\n\n"
+        welcome_msg += "• **Resumir** transcripciones de audio\n"
+        welcome_msg += "• **Responder preguntas** sobre el contenido\n"
+        welcome_msg += "• **Analizar** información de manera conversacional\n\n"
+        welcome_msg += "Una vez que transcribas un audio, automáticamente te daré un resumen. "
+        welcome_msg += "También puedes hacerme preguntas o pedirme que analice aspectos específicos del contenido.\n\n"
+        welcome_msg += "*Tip: Mis respuestas incluyen formato markdown para mejor legibilidad.*"
+        
+        self.ia_chat_text.insert_markdown(tk.END, welcome_msg)
+        self.ia_chat_text.config(state=tk.DISABLED)
+        
         inp = tk.Frame(frame, bg=self.colors['surface'])
         inp.pack(fill=tk.X, padx=10, pady=(0,10))
         self.ia_entry = tk.Entry(
@@ -341,8 +489,8 @@ class TranscriptionApp(tk.Tk):
             f.write(text)
         self.update_transcription_log("Transcripción guardada.")
         self.update_transcription_log("Enviando a IA resumen...")
-        summary = self.get_chat_response("Resume esto:\n"+text)
-        self.update_ia_chat("🤖 IA: "+summary)
+        summary = self.get_chat_response("Resume el siguiente texto de manera clara y estructurada usando markdown cuando sea apropiado:\n\n" + text)
+        self.update_ia_chat_markdown("\n\n---\n\n🤖 **Resumen Automático de la Transcripción:**\n\n" + summary)
         self.cancel_btn.config(state=tk.DISABLED)
 
     def transcribe_audio(self):
@@ -365,20 +513,41 @@ class TranscriptionApp(tk.Tk):
         msg = self.ia_entry.get().strip()
         if not msg:
             return
-        self.update_ia_chat("👤 Usuario: "+msg)
+        self.update_ia_chat_markdown(f"\n👤 **Usuario**: {msg}\n")
         self.ia_entry.delete(0,tk.END)
         threading.Thread(target=lambda: self._send_message(msg), daemon=True).start()
 
     def _send_message(self, msg):
         try:
             resp = self.get_chat_response(msg)
-            self.update_ia_chat("🤖 IA: "+resp)
+            self.update_ia_chat_markdown(f"\n🤖 **IA**: {resp}\n")
         except Exception as e:
-            self.update_ia_chat(f"Error IA: {e}")
+            self.update_ia_chat_markdown(f"\n❌ **Error IA**: {e}\n")
+
+    def update_ia_chat_markdown(self, msg):
+        """Actualiza el chat con formato markdown"""
+        def _update():
+            try:
+                self.ia_chat_text.config(state=tk.NORMAL)
+                self.ia_chat_text.insert_markdown(tk.END, msg)
+                self.ia_chat_text.see(tk.END)
+                self.ia_chat_text.config(state=tk.DISABLED)
+            except Exception as e:
+                # Fallback: insertar sin formato si hay error
+                self.ia_chat_text.config(state=tk.NORMAL)
+                self.ia_chat_text.insert(tk.END, msg)
+                self.ia_chat_text.see(tk.END)
+                self.ia_chat_text.config(state=tk.DISABLED)
+        
+        # Ejecutar en el hilo principal
+        if threading.current_thread() != threading.main_thread():
+            self.after(0, _update)
+        else:
+            _update()
 
     def update_ia_chat(self, msg):
-        self.ia_chat_text.insert(tk.END, msg+"\n\n")
-        self.ia_chat_text.see(tk.END)
+        """Método de compatibilidad - ahora usa markdown"""
+        self.update_ia_chat_markdown(msg)
 
     def update_progress(self, cur, tot):
         self.progress_label.config(text=f"{cur}/{tot}")
