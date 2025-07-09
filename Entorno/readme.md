@@ -209,6 +209,67 @@ Los errores se muestran en el panel de transcripción con timestamp para facilit
 **Organización**: Estrategia Digital y GEN XXI  
 **Descripción**: Aplicación para convertir audio a texto y generar resúmenes con IA
 
+
+## Cambios y mejoras recientes
+
+### 🆕 Selección de modelo IA flexible
+- Ahora puedes **escribir el nombre de cualquier modelo IA** soportado por [GROQ](https://console.groq.com/docs/models) en el campo "Modelo IA".
+- El campo sugiere `llama3-8b-8192` pero puedes usar cualquier modelo válido (ejemplo: `llama3-70b-8192`, `mixtral-8x7b-32768`, etc).
+- El modelo IA se guarda y carga automáticamente junto con la API Key.
+
+### 🆕 Formato de chat mejorado
+- El chat con IA ahora muestra los mensajes con **separadores, encabezados y formato Markdown avanzado**.
+- Los mensajes del usuario e IA aparecen claramente diferenciados y con formato enriquecido.
+- El área de chat soporta **negrita, cursiva, listas, encabezados, código y enlaces** incluso dentro de listas.
+
+### 🆕 Experiencia de usuario
+- El campo de entrada del chat muestra un **placeholder** que desaparece al escribir y se restaura si queda vacío.
+- El botón "Enviar" se desactiva si el campo está vacío.
+- El campo "Modelo IA" permite cualquier texto, pero se recomienda consultar los [modelos disponibles](https://console.groq.com/docs/models).
+
+### 🆕 Guardado y carga de configuración
+- La configuración (API Key y modelo IA) se guarda en el archivo `.transcriptor_config.json` en la carpeta de usuario.
+- Al iniciar la aplicación, la configuración se carga automáticamente y se intenta configurar la API Key y el modelo IA.
+
+### 🆕 Mensajes de bienvenida y ayuda en el chat
+- Al configurar la API Key correctamente, el chat muestra un mensaje de bienvenida con instrucciones, enlaces útiles y el modelo IA seleccionado.
+
+---
+
+## Ejemplo de uso del campo Modelo IA
+
+- **Sugerido:** `llama3-8b-8192`
+- **Otros ejemplos válidos:**  
+  - `llama3-70b-8192`
+  - `mixtral-8x7b-32768`
+  - `gemma-7b-it`
+- **Consulta la lista completa:** [Modelos disponibles en GROQ](https://console.groq.com/docs/models)
+
+---
+
+## Ejemplo de formato en el chat
+
+```
+---
+### 👤 Usuario
+¿Cuáles son los puntos clave de la transcripción?
+
+---
+### 🤖 IA
+**Puntos clave:**
+- **Primera Ley:** Un objeto en reposo permanece en reposo...
+- **Segunda Ley:** La fuerza neta es igual a la masa...
+- **Tercera Ley:** Para cada acción hay una reacción igual y opuesta.
+```
+
+---
+
+## Notas adicionales
+
+- Si introduces un modelo IA incorrecto, la aplicación mostrará un error al intentar configurar la API Key.
+- El chat y la transcripción requieren conexión a Internet y una API Key válida de GROQ.
+- Consulta el [manual de usuario](https://github.com/EstebanM007/Media/tree/main/STT_from_MP4_with_IA) para más detalles y ejemplos.
+
 ## 📝 Licencia
 
 Utiliza un API del servicio Groq el cual limita la interaccion con IA (OpenSoruce).

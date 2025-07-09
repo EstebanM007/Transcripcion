@@ -16,11 +16,6 @@ from langchain_core.messages import SystemMessage
 from langchain.chains.conversation.memory import ConversationBufferWindowMemory
 from langchain_groq import ChatGroq
 
-import os, sys
-if getattr(sys, "frozen", False):
-    # sys._MEIPASS es la carpeta temporal donde PyInstaller extrae los binarios
-    os.environ["IMAGEIO_FFMPEG_EXE"] = os.path.join(sys._MEIPASS, "ffmpeg.exe")
-
 class MarkdownText(tk.Text):
     """Widget de texto personalizado que puede renderizar markdown básico"""
     
@@ -137,7 +132,14 @@ class TranscriptionApp(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("Transcriptor y Chat con IA")
-        self.geometry("1200x700")
+        
+        # Configurar tamaño de ventana para que se vea completa
+        self.geometry("1300x700")  # Aumentado el tamaño
+        self.minsize(1200, 700)    # Tamaño mínimo
+        
+        # Centrar la ventana si no está maximizada
+        self.center_window()
+        
         self.configure(bg='#f0f2f5')
 
         # Configurar estilos
@@ -187,6 +189,18 @@ class TranscriptionApp(tk.Tk):
         self.create_widgets()
         # Mostrar mensaje de bienvenida al iniciar la app
         self.show_welcome()
+        
+        # Forzar actualización de la interfaz
+        self.update_idletasks()
+        
+    def center_window(self):
+        """Centra la ventana en la pantalla"""
+        self.update_idletasks()
+        width = self.winfo_width()
+        height = self.winfo_height()
+        pos_x = (self.winfo_screenwidth() // 2) - (width // 2)
+        pos_y = (self.winfo_screenheight() // 2) - (height // 2)
+        self.geometry(f"{width}x{height}+{pos_x}+{pos_y}")
         
     def show_welcome(self):
         separator = "=" * 50
@@ -292,18 +306,25 @@ class TranscriptionApp(tk.Tk):
         self.cancel_btn.pack(side=tk.RIGHT)
 
     def create_main_panel(self):
+        # Usar PanedWindow para mejor control del espacio
         paned = ttk.Panedwindow(self, orient=tk.HORIZONTAL)
         paned.pack(fill=tk.BOTH, expand=True, padx=20, pady=(0,10))
+        
         left = ttk.Frame(paned)
         right = ttk.Frame(paned)
+        
+        # Configurar el peso de los paneles (50-50)
         paned.add(left, weight=1)
         paned.add(right, weight=1)
+        
         self.create_chat_panel(left)
         self.create_transcription_panel(right)
 
     def create_chat_panel(self, parent):
         frame = tk.Frame(parent, bg=self.colors['surface'], bd=1, relief='solid')
         frame.pack(fill=tk.BOTH, expand=True, padx=(0,10), pady=5)
+        
+        # Header del chat
         hdr = tk.Frame(frame, bg=self.colors['accent'], height=40)
         hdr.pack(fill=tk.X)
         hdr.pack_propagate(False)
@@ -312,14 +333,14 @@ class TranscriptionApp(tk.Tk):
             font=('Segoe UI',14,'bold')
         ).pack(expand=True)
         
-        # Crear el frame del chat
+        # Crear el frame del chat con mejor distribución
         chat_frame = tk.Frame(frame)
         chat_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
         
         # Crear el widget de texto con markdown
         self.ia_chat_text = MarkdownText(
             chat_frame, wrap=tk.WORD, font=('Segoe UI',11), bg='#f8fafc',
-            bd=1, relief='solid', state=tk.DISABLED
+            bd=1, relief='solid', state=tk.DISABLED, height=20
         )
         
         # Crear scrollbar
@@ -343,57 +364,67 @@ class TranscriptionApp(tk.Tk):
         self.ia_chat_text.insert_markdown(tk.END, welcome_msg)
         self.ia_chat_text.config(state=tk.DISABLED)
         
+        # Input del chat con mejor altura
         inp = tk.Frame(frame, bg=self.colors['surface'])
         inp.pack(fill=tk.X, padx=10, pady=(0,10))
+        
         self.ia_entry = tk.Entry(
             inp, font=('Segoe UI',11), bg='white', insertbackground=self.colors['primary']
         )
-        self.ia_entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        self.ia_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, ipady=5)
         self.ia_entry.bind('<Return>', lambda e: self.send_message())
+        
         ttk.Button(
             inp, text="➤ Enviar", style='Primary.TButton',
             command=self.send_message
-        ).pack(side=tk.RIGHT)
+        ).pack(side=tk.RIGHT, padx=(5,0))
 
     def create_transcription_panel(self, parent):
         frame = tk.Frame(parent, bg=self.colors['surface'], bd=1, relief='solid')
         frame.pack(fill=tk.BOTH, expand=True, padx=(10,0), pady=5)
-        hdr = tk.Frame(frame, bg=self.colors['success'], height=40)
+        
+        # Header con indicadores de progreso
+        hdr = tk.Frame(frame, bg=self.colors['success'], height=70)  # Aumentado para acomodar indicadores
         hdr.pack(fill=tk.X)
         hdr.pack_propagate(False)
+        
+        # Título
+        title_frame = tk.Frame(hdr, bg=self.colors['success'])
+        title_frame.pack(side=tk.LEFT, padx=10, pady=5)
         tk.Label(
-            hdr, text="📝 Registro de Transcripción", bg=self.colors['success'],
+            title_frame, text="📝 Registro de Transcripción", bg=self.colors['success'],
             fg='white', font=('Segoe UI',14,'bold')
-        ).pack(side=tk.LEFT, padx=10)
+        ).pack(anchor='w')
         
         # Crear frame para los indicadores de progreso
         progress_frame = tk.Frame(hdr, bg=self.colors['success'])
-        progress_frame.pack(side=tk.RIGHT, padx=10)
+        progress_frame.pack(side=tk.RIGHT, padx=10, pady=5)
         
         # Indicador principal de progreso
         self.progress_label = tk.Label(
             progress_frame, bg=self.colors['success'], fg='white',
             font=('Segoe UI', 9, 'bold')
         )
-        self.progress_label.pack(side=tk.TOP)
+        self.progress_label.pack(anchor='e')
         
         # Indicador de estadísticas
         self.stats_label = tk.Label(
             progress_frame, bg=self.colors['success'], fg='#e0f2fe',
             font=('Segoe UI', 8)
         )
-        self.stats_label.pack(side=tk.TOP)
+        self.stats_label.pack(anchor='e')
         
         # Indicador de tiempo
         self.time_label = tk.Label(
             progress_frame, bg=self.colors['success'], fg='#e0f2fe',
             font=('Segoe UI', 8)
         )
-        self.time_label.pack(side=tk.TOP)
+        self.time_label.pack(anchor='e')
         
+        # Área de texto para transcripción
         self.transcription_text = scrolledtext.ScrolledText(
             frame, wrap=tk.WORD, font=('Consolas',10), bg='#f8fafc',
-            bd=1, relief='solid'
+            bd=1, relief='solid', height=25
         )
         self.transcription_text.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
 
